@@ -1,5 +1,6 @@
 import csv
 from faker import Faker
+import random
 
 class FakeCSVGenerator:
     """
@@ -32,30 +33,89 @@ class FakeCSVGenerator:
         raise NotImplementedError("Child class must implement generate_row()")
 
 
-class FakePersonData(FakeCSVGenerator):
-    """
-    Child class that defines a specific dataset for fake person data.
-    """
-
-    fieldnames = ["ID", "Name", "Email", "Phone Number", "Address", "Company", "Job Title", "Date of Birth"]
+### 1. Employee Records ###
+class FakeEmployeeData(FakeCSVGenerator):
+    fieldnames = ["Employee ID", "Full Name", "Department", "Salary", "Hire Date", "Email"]
 
     def generate_row(self, index):
-        """
-        Generates a fake row for person data.
-        """
         return {
-            "ID": index,
-            "Name": self.fake.name(),
-            "Email": self.fake.email(),
-            "Phone Number": self.fake.phone_number(),
-            "Address": self.fake.address().replace("\n", ", "),
-            "Company": self.fake.company(),
-            "Job Title": self.fake.job(),
-            "Date of Birth": self.fake.date_of_birth(minimum_age=18, maximum_age=75).isoformat(),
+            "Employee ID": f"EMP{index:05d}",
+            "Full Name": self.fake.name(),
+            "Department": random.choice(["HR", "IT", "Finance", "Marketing", "Operations"]),
+            "Salary": round(random.uniform(40000, 120000), 2),
+            "Hire Date": self.fake.date_between(start_date="-10y", end_date="today").isoformat(),
+            "Email": self.fake.company_email(),
         }
 
 
-# Example usage
+### 2. Product Catalog ###
+class FakeProductData(FakeCSVGenerator):
+    fieldnames = ["Product ID", "Product Name", "Category", "Price", "Stock Quantity"]
+
+    def generate_row(self, index):
+        return {
+            "Product ID": f"PROD{index:05d}",
+            "Product Name": self.fake.word().capitalize(),
+            "Category": random.choice(["Electronics", "Clothing", "Food", "Books", "Furniture"]),
+            "Price": round(random.uniform(5, 500), 2),
+            "Stock Quantity": random.randint(0, 1000),
+        }
+
+
+### 3. Financial Transactions ###
+class FakeTransactionData(FakeCSVGenerator):
+    fieldnames = ["Transaction ID", "User ID", "Amount", "Transaction Type", "Timestamp"]
+
+    def generate_row(self, index):
+        return {
+            "Transaction ID": f"TXN{index:06d}",
+            "User ID": f"USR{random.randint(1000, 9999)}",
+            "Amount": round(random.uniform(10, 5000), 2),
+            "Transaction Type": random.choice(["Credit", "Debit", "Refund", "Withdrawal"]),
+            "Timestamp": self.fake.date_time_this_year().isoformat(),
+        }
+
+
+### 4. Online User Accounts ###
+class FakeUserData(FakeCSVGenerator):
+    fieldnames = ["User ID", "Username", "Email", "Signup Date", "Last Login", "Account Status"]
+
+    def generate_row(self, index):
+        return {
+            "User ID": f"USR{index:05d}",
+            "Username": self.fake.user_name(),
+            "Email": self.fake.email(),
+            "Signup Date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
+            "Last Login": self.fake.date_time_this_year().isoformat(),
+            "Account Status": random.choice(["Active", "Inactive", "Suspended"]),
+        }
+
+
+### 5. Healthcare Patient Records (Non-Sensitive) ###
+class FakeHealthcareData(FakeCSVGenerator):
+    fieldnames = ["Patient ID", "Full Name", "Age", "Blood Type", "Doctor", "Last Visit"]
+
+    def generate_row(self, index):
+        return {
+            "Patient ID": f"PAT{index:06d}",
+            "Full Name": self.fake.name(),
+            "Age": random.randint(18, 90),
+            "Blood Type": random.choice(["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]),
+            "Doctor": f"Dr. {self.fake.last_name()}",
+            "Last Visit": self.fake.date_between(start_date="-2y", end_date="today").isoformat(),
+        }
+
+
+### Example Usage ###
 if __name__ == "__main__":
-    person_data_generator = FakePersonData("fake_person_data.csv", num_rows=50)
-    person_data_generator.generate_csv()
+    datasets = {
+        "fake_employees.csv": FakeEmployeeData,
+        "fake_products.csv": FakeProductData,
+        "fake_transactions.csv": FakeTransactionData,
+        "fake_users.csv": FakeUserData,
+        "fake_healthcare.csv": FakeHealthcareData,
+    }
+
+    for filename, cls in datasets.items():
+        generator = cls(filename, num_rows=50)
+        generator.generate_csv()
