@@ -1,0 +1,24 @@
+#update your system
+
+sudo apt update
+
+or
+
+sudo yum update -y
+
+# Check if pip and python3 are installed
+
+python3 --version
+pip --version
+
+# If not install pip
+
+sudo apt install -y python3 python3-pip
+
+or
+
+sudo yum install -y python3 python3-pip
+
+# install faker
+
+sudo pip3 install faker
