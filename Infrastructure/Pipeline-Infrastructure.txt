@@ -151,6 +151,80 @@ Resources:
               - "kms:Encrypt"
             Resource: !GetAtt MyKMSKey.Arn
 
+  # Lambda Execution Role with KMS permissions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaS3KMSExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: LambdaS3KMSAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:PutObject"
+                  - "s3:ListBucket"
+                Resource:
+                  - !Sub "arn:aws:s3:::${DataBucket}"
+                  - !Sub "arn:aws:s3:::${DataBucket}/*"
+              - Effect: Allow
+                Action:
+                  - "kms:Encrypt"
+                  - "kms:Decrypt"
+                  - "kms:GenerateDataKey"
+                Resource: !GetAtt MyKMSKey.Arn
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+
+  # Lambda Function (Inline Code)
+  HelloWorldLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: HelloWorldLambda
+      Runtime: python3.9
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: index.lambda_handler
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          DATA_BUCKET: !Ref DataBucket
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              bucket_name = os.environ['DATA_BUCKET']
+              
+              file_name = "hello_world.txt"
+              file_content = "Hello from Lambda!"
+
+              try:
+                  s3.put_object(Bucket=bucket_name, Key=file_name, Body=file_content)
+                  return {
+                      'statusCode': 200,
+                      'body': f'Successfully wrote {file_name} to {bucket_name}'
+                  }
+              except Exception as e:
+                  return {
+                      'statusCode': 500,
+                      'body': str(e)
+                  }
+
 Outputs:
   LogBucketName:
     Description: Name of the S3 bucket for CloudTrail logs
@@ -167,3 +241,11 @@ Outputs:
   S3KMSAccessGroup:
     Description: IAM Group with S3 and KMS Access
     Value: !Ref S3KMSAccessGroup
+
+  LambdaFunctionName:
+    Description: Name of the Lambda function that writes Hello World to S3
+    Value: !Ref HelloWorldLambda
+
+  LambdaExecutionRole:
+    Description: IAM Role for Lambda execution
+    Value: !GetAtt LambdaExecutionRole.Arn
