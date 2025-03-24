@@ -1,41 +1,120 @@
 import csv
-from faker import Faker
+import json
 import random
+from faker import Faker
 
-class FakeCSVGenerator:
-    """
-    Parent class responsible for generating a CSV file using Faker.
-    Child classes should define `fieldnames` and implement `generate_row()`.
-    """
+### **Configuration Class** ###
+class CSVConfig:
+    """Configuration object ensuring valid values for num_rows, num_duplicates, and null_probability."""
 
-    def __init__(self, filename="fake_data.csv", num_rows=100):
-        self.filename = filename
+    def __init__(self, config_list=None):
+        default_values = [100, 0, 0.1]  # Default values for num_rows, num_duplicates, null_probability
+        self.config_list = config_list if config_list else default_values
+
+        if not isinstance(self.config_list, list) or len(self.config_list) != 3:
+            raise ValueError("Config must be a list of exactly 3 items: [num_rows, num_duplicates, null_probability]")
+
+        num_rows, num_duplicates, null_probability = self.config_list
+
+        if not isinstance(num_rows, int) or num_rows <= 0:
+            raise ValueError("num_rows must be a positive integer.")
+
+        if not isinstance(num_duplicates, int) or not (0 <= num_duplicates <= num_rows):
+            raise ValueError("num_duplicates must be an integer between 0 and num_rows.")
+
+        if not isinstance(null_probability, float) or not (0 <= null_probability <= 1):
+            raise ValueError("null_probability must be a float between 0 and 1.")
+
         self.num_rows = num_rows
+        self.num_duplicates = num_duplicates
+        self.null_probability = null_probability
+
+
+### **Parent Class for CSV Generation** ###
+class FakeCSVGenerator:
+    """Parent class for generating CSV files with schema drift and data corruption options."""
+
+    def __init__(self, filename="fake_data.csv", config=CSVConfig(), schema_drift=False, data_errors=False):
+        self.filename = filename
+        self.config = config
+        self.schema_drift = schema_drift  # Controls schema drift (random column renames and drops)
+        self.data_errors = data_errors  # Controls data corruption (wrong types)
         self.fake = Faker()
+        self.original_fieldnames = self.fieldnames.copy()  # Preserve original field names
 
     def generate_csv(self):
-        """
-        Generates a CSV file with fake data using the child class's defined structure.
-        """
+        """Generates a CSV file with optional schema drift and data errors."""
+        data = []
+        for i in range(1, self.config.num_rows + 1):
+            row = self.generate_row(i)
+            if self.config.null_probability > 0:
+                row = self.introduce_nulls(row)
+            if self.data_errors:
+                row = self.introduce_data_errors(row)
+            data.append(row)
+
+        if self.config.num_duplicates > 0:
+            duplicates = random.choices(data, k=self.config.num_duplicates)
+            data.extend(duplicates)
+
+        random.shuffle(data)
+
+        fieldnames = self.apply_schema_drift() if self.schema_drift else self.fieldnames
+
         with open(self.filename, mode="w", newline="", encoding="utf-8") as file:
-            writer = csv.DictWriter(file, fieldnames=self.fieldnames)
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
+            for row in data:
+                cleaned_row = {col: row.get(col, "") for col in fieldnames}  # Drop missing columns
+                writer.writerow(cleaned_row)
 
-            for i in range(1, self.num_rows + 1):
-                writer.writerow(self.generate_row(i))
-
-        print(f"CSV file '{self.filename}' with {self.num_rows} rows generated successfully!")
+        print(f"CSV file '{self.filename}' with {len(data)} rows (including duplicates) generated successfully!")
 
     def generate_row(self, index):
-        """
-        Child classes should override this method to define their specific row structure.
-        """
+        """Child classes must implement this."""
         raise NotImplementedError("Child class must implement generate_row()")
 
+    def introduce_nulls(self, row):
+        """Randomly replaces some fields with None based on `null_probability`."""
+        return {key: (value if random.random() > self.config.null_probability else None) for key, value in row.items()}
 
-### 1. Employee Records ###
+    def introduce_data_errors(self, row):
+        """Randomly replaces correct values with incorrect data types."""
+        for key in row.keys():
+            if random.random() < 0.1:  # 10% chance of a wrong type
+                if isinstance(row[key], int):
+                    row[key] = f"{row[key]:02d}"  # Convert integer to zero-padded string
+                elif isinstance(row[key], float):
+                    row[key] = str(row[key])  # Convert float to string
+                elif isinstance(row[key], str) and row[key].isdigit():
+                    row[key] = int(row[key])  # Convert numeric string to integer
+        return row
+
+    def apply_schema_drift(self):
+        """Randomly renames or drops columns using the child class's `schema_variants`."""
+        new_fieldnames = []
+        for col in self.original_fieldnames:
+            if col in self.schema_variants and random.random() < 0.3:  # 30% chance of renaming
+                new_fieldnames.append(random.choice(self.schema_variants[col]))
+            elif random.random() < 0.1:  # 10% chance of dropping the column
+                continue
+            else:
+                new_fieldnames.append(col)
+
+        return new_fieldnames if new_fieldnames else self.original_fieldnames
+
+
+### **Child Classes for Different Data Types** ###
 class FakeEmployeeData(FakeCSVGenerator):
     fieldnames = ["Employee ID", "Full Name", "Department", "Salary", "Hire Date", "Email"]
+    
+    schema_variants = {
+        "Full Name": ["Full_Name", "fullName", "FullName"],
+        "Email": ["email", "Email_Address", "EmailAddress"],
+        "Phone Number": ["Phone", "phone_number", "ContactNumber"],
+        "Department": ["Dept", "Team", "Division"],
+        "Salary": ["Annual_Salary", "BasePay"],
+    }
 
     def generate_row(self, index):
         return {
@@ -48,23 +127,15 @@ class FakeEmployeeData(FakeCSVGenerator):
         }
 
 
-### 2. Product Catalog ###
-class FakeProductData(FakeCSVGenerator):
-    fieldnames = ["Product ID", "Product Name", "Category", "Price", "Stock Quantity"]
-
-    def generate_row(self, index):
-        return {
-            "Product ID": f"PROD{index:05d}",
-            "Product Name": self.fake.word().capitalize(),
-            "Category": random.choice(["Electronics", "Clothing", "Food", "Books", "Furniture"]),
-            "Price": round(random.uniform(5, 500), 2),
-            "Stock Quantity": random.randint(0, 1000),
-        }
-
-
-### 3. Financial Transactions ###
 class FakeTransactionData(FakeCSVGenerator):
     fieldnames = ["Transaction ID", "User ID", "Amount", "Transaction Type", "Timestamp"]
+
+    schema_variants = {
+        "Transaction ID": ["Txn_ID", "TransactionID"],
+        "User ID": ["User_ID", "CustomerID"],
+        "Amount": ["TotalAmount", "TransactionAmount"],
+        "Transaction Type": ["Type", "TxnType"],
+    }
 
     def generate_row(self, index):
         return {
@@ -76,46 +147,56 @@ class FakeTransactionData(FakeCSVGenerator):
         }
 
 
-### 4. Online User Accounts ###
-class FakeUserData(FakeCSVGenerator):
-    fieldnames = ["User ID", "Username", "Email", "Signup Date", "Last Login", "Account Status"]
+### **JSON Parsing for Dynamic Object Creation** ###
+DATASET_CLASSES = {
+    "employee": FakeEmployeeData,
+    "transaction": FakeTransactionData
+}
 
-    def generate_row(self, index):
-        return {
-            "User ID": f"USR{index:05d}",
-            "Username": self.fake.user_name(),
-            "Email": self.fake.email(),
-            "Signup Date": self.fake.date_between(start_date="-5y", end_date="today").isoformat(),
-            "Last Login": self.fake.date_time_this_year().isoformat(),
-            "Account Status": random.choice(["Active", "Inactive", "Suspended"]),
-        }
+def load_config_from_json(json_string):
+    """Parses a JSON string and creates a FakeCSVGenerator object dynamically."""
+    try:
+        data = json.loads(json_string)  # Convert JSON string to Python dict
+
+        filename = data.get("filename", "default.csv")
+        config_values = data.get("config", {})
+        schema_drift = data.get("schema_drift", False)
+        data_errors = data.get("data_errors", False)
+        dataset_type = data.get("dataset_type", "employee")
+
+        config = CSVConfig([
+            config_values.get("num_rows", 100),
+            config_values.get("num_duplicates", 0),
+            config_values.get("null_probability", 0.1)
+        ])
+
+        dataset_class = DATASET_CLASSES.get(dataset_type)
+        if not dataset_class:
+            raise ValueError(f"Invalid dataset type: {dataset_type}")
+
+        return dataset_class(filename, config, schema_drift, data_errors)
+
+    except Exception as e:
+        print(f"Error parsing JSON: {e}")
+        return None
 
 
-### 5. Healthcare Patient Records (Non-Sensitive) ###
-class FakeHealthcareData(FakeCSVGenerator):
-    fieldnames = ["Patient ID", "Full Name", "Age", "Blood Type", "Doctor", "Last Visit"]
-
-    def generate_row(self, index):
-        return {
-            "Patient ID": f"PAT{index:06d}",
-            "Full Name": self.fake.name(),
-            "Age": random.randint(18, 90),
-            "Blood Type": random.choice(["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]),
-            "Doctor": f"Dr. {self.fake.last_name()}",
-            "Last Visit": self.fake.date_between(start_date="-2y", end_date="today").isoformat(),
-        }
-
-
-### Example Usage ###
+### **Example Usage** ###
 if __name__ == "__main__":
-    datasets = {
-        "fake_employees.csv": FakeEmployeeData,
-        "fake_products.csv": FakeProductData,
-        "fake_transactions.csv": FakeTransactionData,
-        "fake_users.csv": FakeUserData,
-        "fake_healthcare.csv": FakeHealthcareData,
+    json_input = '''
+    {
+        "filename": "fake_employees.csv",
+        "config": {
+            "num_rows": 50,
+            "num_duplicates": 5,
+            "null_probability": 0.1
+        },
+        "schema_drift": true,
+        "data_errors": true,
+        "dataset_type": "employee"
     }
+    '''
 
-    for filename, cls in datasets.items():
-        generator = cls(filename, num_rows=50)
+    generator = load_config_from_json(json_input)
+    if generator:
         generator.generate_csv()
