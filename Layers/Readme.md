@@ -1,4 +1,4 @@
-# AWS Lambda: Generate Fake CSVs with Faker (from CloudShell)
+# AWS Lambda: Generate Faker Layer CloudShell
 
 This guide shows how to package and deploy a Python Lambda function that uses `faker` to generate fake CSVs and upload them to S3 — entirely from AWS CloudShell.
 
