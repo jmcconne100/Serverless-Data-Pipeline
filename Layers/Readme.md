@@ -12,44 +12,27 @@ This guide shows how to package and deploy a Python Lambda function that uses `f
 
 1. Launch AWS CloudShell.
 
-2. Create and enter a working directory:
-   mkdir my-lambda-faker && cd my-lambda-faker
+2. Create and install the faker library:
+   mkdir -p faker_layer/python/lib/python3.11/site-packages
+   pip install faker -t faker_layer/python/lib/python3.11/site-packages
 
-3. Upload or create your Lambda script:
-   You can use the CloudShell "Actions > Upload File" option or create it directly using:
-   nano fake_data_boto3.py
+3. CD into the directory and zip everything:
+   cd faker_layer
+   zip -r ../faker_layer.zip python
 
-4. Install the `faker` library into the current directory:
-   pip install faker -t .
+4. Download the zip file
 
-5. Confirm files are in place (optional):
-   ls
-
-6. Zip everything into a deployment package:
-   zip -r function.zip .
-
-7. Deploy the function via AWS Console:
+5. Deploy the function via AWS Console:
    - Go to AWS Lambda > Create Function (choose Python 3.11)
    - Under Code > Upload from: choose .zip file
    - Upload function.zip
    - Click Deploy
 
-8. Create a test event in the Lambda console with the following payload:
-   {
-     "filename": "fake_employees.csv",
-     "s3_bucket": "your-bucket-name",
-     "s3_key": "output/fake_employees.csv",
-     "config": {
-       "num_rows": 50,
-       "num_duplicates": 5,
-       "null_probability": 0.1
-     },
-     "schema_drift": true,
-     "data_errors": true,
-     "dataset_type": "employee"
-   }
+6. From your Lambda function, scroll down to the bottom underneath the code section and add the layer.
 
-9. Run the test. If your Lambda has the right IAM role permissions for S3, it will generate and upload the CSV.
+7. Double check you've used Python 3.11
 
-10. (Optional) Clean up:
-    rm -rf faker* dateutil* python_dateutil* six.py* __pycache__
+8. in your function perform 
+   - 'import faker'
+   - print("faker module location:", faker.__file__)
+   - print("faker contents:", dir(faker))

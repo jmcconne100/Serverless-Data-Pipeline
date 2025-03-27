@@ -1,6 +1,8 @@
 import csv
 import json
 import random
+import boto3
+import os
 from faker import Faker
 
 ### **Configuration Class** ###
@@ -184,22 +186,52 @@ def load_config_from_json(json_string):
         return None
 
 
-### **Example Usage** ###
-if __name__ == "__main__":
-    json_input = '''
-    {
-        "filename": "fake_employees.csv",
-        "config": {
-            "num_rows": 50,
-            "num_duplicates": 5,
-            "null_probability": 0.1
-        },
-        "schema_drift": true,
-        "data_errors": true,
-        "dataset_type": "employee"
-    }
-    '''
+def lambda_handler(event, context=None):
+    """
+    AWS Lambda-compatible entry point.
+    Expects `event` to include:
+    - 'filename': local temp file name (e.g., 'fake_data.csv')
+    - 's3_bucket': target S3 bucket name
+    - 's3_key': target key path in S3 (e.g., 'output/fake_data.csv')
+    - 'config', 'dataset_type', 'schema_drift', 'data_errors': see load_config_from_json()
+    """
+    # Allow event to be passed in as JSON string or dict
+    if isinstance(event, str):
+        generator = load_config_from_json(event)
+    else:
+        generator = load_config_from_json(json.dumps(event))
 
-    generator = load_config_from_json(json_input)
-    if generator:
-        generator.generate_csv()
+    if not generator:
+        return {
+            "statusCode": 400,
+            "body": "Invalid input JSON or configuration"
+        }
+
+    # Generate the CSV file locally
+    generator.generate_csv()
+
+    # Upload to S3
+    s3_bucket = event.get("s3_bucket")
+    s3_key = event.get("s3_key", generator.filename)
+
+    if not s3_bucket:
+        return {
+            "statusCode": 400,
+            "body": "Missing required S3 bucket name in 's3_bucket'"
+        }
+
+    try:
+        s3 = boto3.client("s3")
+        with open(generator.filename, "rb") as f:
+            s3.upload_fileobj(f, s3_bucket, s3_key)
+
+        return {
+            "statusCode": 200,
+            "body": f"CSV file uploaded to s3://{s3_bucket}/{s3_key}"
+        }
+
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": f"Error uploading to S3: {str(e)}"
+        }
