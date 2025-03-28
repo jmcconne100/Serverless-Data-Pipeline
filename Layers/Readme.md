@@ -33,6 +33,6 @@ This guide shows how to package and deploy a Python Lambda function that uses `f
 7. Double check you've used Python 3.11
 
 8. in your function perform 
-   - 'import faker'
+   - import faker
    - print("faker module location:", faker.__file__)
    - print("faker contents:", dir(faker))
