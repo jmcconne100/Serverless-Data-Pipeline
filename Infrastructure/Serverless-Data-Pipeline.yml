@@ -6,20 +6,19 @@ Resources:
     Type: AWS::Glue::Crawler
     Properties:
       Name: "MyGlueCrawler"
-      Role: !GetAtt GlueJobRole.Arn  # Uses the existing IAM role for Glue jobs
-      DatabaseName: "glue_hello-world-database"  # Replace with your Glue database
+      Role: !GetAtt GlueJobRole.Arn
+      DatabaseName: "glue_hello-world-database"
       Targets:
         S3Targets:
-          - Path: "s3://jon-data-pipeline-bucket/input-data/"  # S3 folder to scan
-      TablePrefix: "glue_"  # Prefix for created tables
+          - Path: "s3://jon-data-pipeline-bucket/"
+      TablePrefix: "glue_"
       SchemaChangePolicy:
         UpdateBehavior: "UPDATE_IN_DATABASE"
         DeleteBehavior: "DEPRECATE_IN_DATABASE"
       RecrawlPolicy:
-        RecrawlBehavior: "CRAWL_EVERYTHING"  # Always scan the full dataset
+        RecrawlBehavior: "CRAWL_EVERYTHING"
       Configuration: "{\"Version\":1.0,\"Grouping\":{\"TableGroupingPolicy\":\"CombineCompatibleSchemas\"}}"
 
-  # IAM Role for Glue Job
   GlueJobRole:
     Type: AWS::IAM::Role
     Properties:
@@ -54,6 +53,18 @@ Resources:
                   - glue:GetJobRuns
                   - glue:GetJobs
                   - glue:BatchStopJobRun
+                  - glue:BatchGetPartition
+                  - glue:BatchCreatePartition
+                  - glue:StartCrawler
+                  - glue:GetCrawler
+                  - glue:GetDatabase
+                  - glue:GetDatabases
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                  - glue:CreateTable
+                  - glue:CreateDatabase
                 Resource: "*"
               - Effect: Allow
                 Action:
@@ -67,35 +78,11 @@ Resources:
                   - kms:Decrypt
                   - kms:GenerateDataKey
                 Resource: !GetAtt MyKMSKey.Arn
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
 
-  # CloudWatch Log Group for Glue Job
-  GlueLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws-glue/jobs/${AWS::StackName}"
-      RetentionInDays: 7
-
-  # AWS Glue Job
-  GlueJob:
-    Type: AWS::Glue::Job
-    Properties:
-      Name: "GlueHelloWorldJob"
-      Role: !GetAtt GlueJobRole.Arn
-      Command:
-        Name: "glueetl"
-        ScriptLocation: "s3://jon-scripts-bucket/glue-hello-world.py"
-        PythonVersion: "3"
-      GlueVersion: "3.0"
-      MaxCapacity: 2.0
-      ExecutionProperty:
-        MaxConcurrentRuns: 1
-      DefaultArguments:
-        "--job-bookmark-option": "job-bookmark-disable"
-        "--TempDir": "s3://jon-scripts-bucket/temp/"
-        "--enable-continuous-cloudwatch-log": "true"
-        "--enable-metrics": "true"
-
-  # KMS Key for encrypting S3 bucket data
   MyKMSKey:
     Type: AWS::KMS::Key
     Properties:
@@ -109,7 +96,6 @@ Resources:
             Action: "kms:*"
             Resource: "*"
 
-  # Log bucket for CloudTrail logs
   LogBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -127,7 +113,6 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          # Allow CloudTrail to write logs
           - Effect: Allow
             Principal:
               Service: cloudtrail.amazonaws.com
@@ -138,8 +123,6 @@ Resources:
                 aws:SourceAccount: !Sub "${AWS::AccountId}"
               ArnLike:
                 aws:SourceArn: !Sub "arn:aws:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/MyCloudTrail"
-
-          # Allow CloudTrail to get bucket ACL
           - Effect: Allow
             Principal:
               Service: cloudtrail.amazonaws.com
@@ -149,7 +132,6 @@ Resources:
               StringEquals:
                 aws:SourceAccount: !Sub "${AWS::AccountId}"
 
-  # General data bucket with KMS encryption and logging
   DataBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -164,16 +146,17 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      NotificationConfiguration:
+        EventBridgeConfiguration: {}
       LoggingConfiguration:
         DestinationBucketName: !Ref LogBucket
         LogFilePrefix: "DataBucketLogs/"
       VersioningConfiguration:
         Status: Enabled
 
-  # CloudTrail logging setup
   CloudTrail:
     Type: AWS::CloudTrail::Trail
-    DependsOn: LogBucketPolicy  # Ensures policy is in place before CloudTrail starts
+    DependsOn: LogBucketPolicy
     Properties:
       TrailName: MyCloudTrail
       S3BucketName: !Ref LogBucket
@@ -182,13 +165,11 @@ Resources:
       IsMultiRegionTrail: true
       EnableLogFileValidation: true
 
-  # IAM Group for CloudTrail Service and Log Bucket Access
   CloudTrailAccessGroup:
     Type: AWS::IAM::Group
     Properties:
       GroupName: CloudTrailAccessGroup
 
-  # IAM Policy for CloudTrail Service and Log Bucket Access
   CloudTrailAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -214,13 +195,11 @@ Resources:
               - !Sub "arn:aws:s3:::${LogBucket}"
               - !Sub "arn:aws:s3:::${LogBucket}/AWSLogs/${AWS::AccountId}/*"
 
-  # IAM Group for S3 and KMS Access
   S3KMSAccessGroup:
     Type: AWS::IAM::Group
     Properties:
       GroupName: "S3AccessGroup"
 
-  # IAM Policy for S3 and KMS Access
   S3KMSAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -244,7 +223,6 @@ Resources:
               - "kms:Encrypt"
             Resource: !GetAtt MyKMSKey.Arn
 
-  # Lambda Execution Role with KMS permissions
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -281,42 +259,92 @@ Resources:
                   - "logs:PutLogEvents"
                 Resource: "*"
 
-  # Lambda Function (Inline Code)
   HelloWorldLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: HelloWorldLambda
-      Runtime: python3.9
+      FunctionName: FakeDataLambda
+      Runtime: python3.11
       Role: !GetAtt LambdaExecutionRole.Arn
-      Handler: index.lambda_handler
+      Handler: fake_data.lambda_handler
       Timeout: 30
       MemorySize: 128
       Environment:
         Variables:
           DATA_BUCKET: !Ref DataBucket
       Code:
+        S3Bucket: jon-scripts-bucket
+        S3Key: fake_data.zip
+      Layers:
+        - arn:aws:lambda:us-west-1:286036002000:layer:Faker:2
+
+  GlueTriggerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: TriggerGlueCrawlerOnS3
+      Runtime: python3.9
+      Role: !GetAtt GlueTriggerLambdaRole.Arn
+      Handler: index.lambda_handler
+      Timeout: 10
+      Code:
         ZipFile: |
           import boto3
-          import os
 
           def lambda_handler(event, context):
-              s3 = boto3.client('s3')
-              bucket_name = os.environ['DATA_BUCKET']
-              
-              file_name = "hello_world.txt"
-              file_content = "Hello from Lambda!"
+              glue = boto3.client('glue')
+              glue.start_crawler(Name='MyGlueCrawler')
+              return {'statusCode': 200, 'body': 'Glue crawler started'}
 
-              try:
-                  s3.put_object(Bucket=bucket_name, Key=file_name, Body=file_content)
-                  return {
-                      'statusCode': 200,
-                      'body': f'Successfully wrote {file_name} to {bucket_name}'
-                  }
-              except Exception as e:
-                  return {
-                      'statusCode': 500,
-                      'body': str(e)
-                  }
+  GlueTriggerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaStartGlueCrawlerRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartGlueCrawlerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ["glue:StartCrawler"]
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  S3ToGlueEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: TriggerGlueCrawlerOnS3Upload
+      Description: Trigger Glue Crawler when any new file is uploaded to the bucket
+      EventPattern:
+        source:
+          - "aws.s3"
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              - !Ref DataBucket
+      Targets:
+        - Arn: !GetAtt GlueTriggerLambda.Arn
+          Id: GlueTriggerLambdaTarget
+
+  LambdaInvokePermissionForEventBridge:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GlueTriggerLambda
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt S3ToGlueEventRule.Arn
 
 Outputs:
   LogBucketName:
@@ -342,11 +370,3 @@ Outputs:
   LambdaExecutionRole:
     Description: IAM Role for Lambda execution
     Value: !GetAtt LambdaExecutionRole.Arn
-
-  GlueJobName:
-    Description: "AWS Glue Job Name"
-    Value: !Ref GlueJob
-
-  CloudWatchLogGroup:
-    Description: "CloudWatch Log Group for Glue Job"
-    Value: !Ref GlueLogGroup
