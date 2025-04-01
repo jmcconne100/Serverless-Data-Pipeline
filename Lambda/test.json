@@ -1,0 +1,13 @@
+{
+    "s3_bucket": "jon-data-pipeline-bucket",
+    "s3_key": "output/test.csv",
+    "filename": "test_employee.csv",
+    "dataset_type": "employee",
+    "schema_drift": false,
+    "data_errors": false,
+    "config": {
+      "num_rows": 10,
+      "num_duplicates": 1,
+      "null_probability": 0.1
+    }
+}  
